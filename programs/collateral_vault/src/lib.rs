@@ -221,6 +221,53 @@ pub fn unlock_collateral(ctx: Context<UnlockCollateral>, amount: u64) -> Result<
     Ok(())
 }
 
+pub fn transfer_collateral(
+    ctx: Context<TransferCollateral>,
+    amount: u64,
+) -> Result<()> {
+    require!(amount > 0, VaultError::InvalidAmount);
+
+    let now = Clock::get()?.unix_timestamp;
+
+    let from_vault = &mut ctx.accounts.from_vault;
+    let to_vault = &mut ctx.accounts.to_vault;
+
+    // Ensure sufficient free collateral
+    require!(
+        from_vault.available_balance >= amount,
+        VaultError::InsufficientAvailableBalance
+    );
+
+    // Update balances atomically
+    from_vault.available_balance = from_vault
+        .available_balance
+        .checked_sub(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    from_vault.total_balance = from_vault
+        .total_balance
+        .checked_sub(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    to_vault.available_balance = to_vault
+        .available_balance
+        .checked_add(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    to_vault.total_balance = to_vault
+        .total_balance
+        .checked_add(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    emit!(TransferEvent {
+        from_vault: from_vault.key(),
+        to_vault: to_vault.key(),
+        amount,
+        timestamp: now,
+    });
+
+    Ok(())
+}
 
 #[derive(Accounts)]
 pub struct InitializeVault<'info> {
@@ -355,4 +402,33 @@ pub struct UnlockCollateral<'info> {
         bump = vault.bump,
     )]
     pub vault: Account<'info, CollateralVault>,
+}
+
+#[derive(Accounts)]
+pub struct TransferCollateral<'info> {
+    /// CHECK: calling program
+    pub caller_program: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [b"vault_authority"],
+        bump = vault_authority.bump,
+        constraint = vault_authority
+            .authorized_programs
+            .contains(&caller_program.key()),
+    )]
+    pub vault_authority: Account<'info, VaultAuthority>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", from_vault.owner.as_ref()],
+        bump = from_vault.bump,
+    )]
+    pub from_vault: Account<'info, CollateralVault>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", to_vault.owner.as_ref()],
+        bump = to_vault.bump,
+    )]
+    pub to_vault: Account<'info, CollateralVault>,
 }
