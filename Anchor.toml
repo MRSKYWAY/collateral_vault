@@ -17,6 +17,11 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 \"tests/**/*.ts\""
+derive = "npx ts-node scripts/derive.ts"
+createVaultAta = "npx ts-node scripts/createVaultAta.ts"
+initVault = "npx ts-node scripts/initVault.ts"
+deposit = "npx ts-node scripts/deposit.ts"
+withdraw = "npx ts-node scripts/withdraw.ts"
 
 [hooks]
 

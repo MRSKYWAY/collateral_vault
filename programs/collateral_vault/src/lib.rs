@@ -42,10 +42,8 @@ pub mod collateral_vault {
 
         Ok(())
     }
-}
 
-
-pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
+    pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
     require!(amount > 0, VaultError::InvalidAmount);
 
     let vault_key = ctx.accounts.vault.key();
@@ -268,6 +266,10 @@ pub fn transfer_collateral(
 
     Ok(())
 }
+}
+
+
+
 
 #[derive(Accounts)]
 pub struct InitializeVault<'info> {
@@ -432,3 +434,7 @@ pub struct TransferCollateral<'info> {
     )]
     pub to_vault: Account<'info, CollateralVault>,
 }
+
+
+#[cfg(test)]
+mod tests;
