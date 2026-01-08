@@ -43,3 +43,18 @@ impl CollateralVault {
         8 +   // created_at
         1;    // bump
 }
+
+
+#[account]
+pub struct VaultAuthority {
+    pub authorized_programs: Vec<Pubkey>,
+    pub bump: u8,
+}
+
+impl VaultAuthority {
+    pub const LEN: usize =
+        8 +   // discriminator
+        4 +   // vec length
+        (32 * 16) + // up to 16 authorized programs (reasonable cap)
+        1;    // bump
+}

@@ -159,6 +159,69 @@ pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
     Ok(())
 }
 
+pub fn initialize_vault_authority(
+    ctx: Context<InitializeVaultAuthority>,
+    authorized_programs: Vec<Pubkey>,
+) -> Result<()> {
+    require!(
+        authorized_programs.len() <= 16,
+        VaultError::InvalidAmount
+    );
+
+    let authority = &mut ctx.accounts.vault_authority;
+    authority.authorized_programs = authorized_programs;
+    authority.bump = ctx.bumps.vault_authority;
+
+    Ok(())
+}
+
+pub fn lock_collateral(ctx: Context<LockCollateral>, amount: u64) -> Result<()> {
+    require!(amount > 0, VaultError::InvalidAmount);
+
+    let vault = &mut ctx.accounts.vault;
+
+    require!(
+        vault.available_balance >= amount,
+        VaultError::InsufficientAvailableBalance
+    );
+
+    vault.available_balance = vault
+        .available_balance
+        .checked_sub(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    vault.locked_balance = vault
+        .locked_balance
+        .checked_add(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    Ok(())
+}
+
+pub fn unlock_collateral(ctx: Context<UnlockCollateral>, amount: u64) -> Result<()> {
+    require!(amount > 0, VaultError::InvalidAmount);
+
+    let vault = &mut ctx.accounts.vault;
+
+    require!(
+        vault.locked_balance >= amount,
+        VaultError::InvalidAmount
+    );
+
+    vault.locked_balance = vault
+        .locked_balance
+        .checked_sub(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    vault.available_balance = vault
+        .available_balance
+        .checked_add(amount)
+        .ok_or(VaultError::MathOverflow)?;
+
+    Ok(())
+}
+
+
 #[derive(Accounts)]
 pub struct InitializeVault<'info> {
     #[account(mut)]
@@ -233,6 +296,63 @@ pub struct Withdraw<'info> {
     pub token_program: Interface<'info, TokenInterface>,
 }
 
+#[derive(Accounts)]
+pub struct InitializeVaultAuthority<'info> {
+    #[account(mut)]
+    pub admin: Signer<'info>,
 
+    #[account(
+        init,
+        payer = admin,
+        space = VaultAuthority::LEN,
+        seeds = [b"vault_authority"],
+        bump
+    )]
+    pub vault_authority: Account<'info, VaultAuthority>,
 
+    pub system_program: Program<'info, System>,
+}
 
+#[derive(Accounts)]
+pub struct LockCollateral<'info> {
+    /// CHECK: caller program (CPI)
+    pub caller_program: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [b"vault_authority"],
+        bump = vault_authority.bump,
+        constraint = vault_authority
+            .authorized_programs
+            .contains(&caller_program.key()),
+    )]
+    pub vault_authority: Account<'info, VaultAuthority>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault.owner.as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, CollateralVault>,
+}
+
+#[derive(Accounts)]
+pub struct UnlockCollateral<'info> {
+    /// CHECK: caller program (CPI)
+    pub caller_program: UncheckedAccount<'info>,
+
+    #[account(
+        seeds = [b"vault_authority"],
+        bump = vault_authority.bump,
+        constraint = vault_authority
+            .authorized_programs
+            .contains(&caller_program.key()),
+    )]
+    pub vault_authority: Account<'info, VaultAuthority>,
+
+    #[account(
+        mut,
+        seeds = [b"vault", vault.owner.as_ref()],
+        bump = vault.bump,
+    )]
+    pub vault: Account<'info, CollateralVault>,
+}
