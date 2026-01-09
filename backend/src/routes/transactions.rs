@@ -5,7 +5,7 @@ pub async fn get_transactions(
     state: axum::extract::State<AppState>,
     Path(owner): Path<String>,
 ) -> Json<Vec<serde_json::Value>> {
-    let rows = sqlx::query!(
+    let rows = sqlx::query(
         "SELECT tx_type, amount, timestamp FROM vault_transactions WHERE owner = ?",
         owner
     )
@@ -25,7 +25,7 @@ pub async fn get_transactions(
 pub async fn get_tvl(
     state: axum::extract::State<AppState>,
 ) -> Json<i64> {
-    let row = sqlx::query!(
+    let row = sqlx::query(
         "SELECT SUM(total_balance) as tvl FROM vaults"
     )
     .fetch_one(&state.db)

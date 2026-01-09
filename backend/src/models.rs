@@ -60,3 +60,18 @@ pub struct AmountRequest {
 pub struct TxResponse {
     pub transaction_base64: String,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct TransferRequest {
+    pub from: String,
+    pub to: String,
+    pub amount: u64,
+}
+
+#[derive(Serialize)]
+pub struct IntentResponse {
+    pub program: &'static str,
+    pub instruction: &'static str,
+    pub params: serde_json::Value,
+    pub note: &'static str,
+}

@@ -1,6 +1,9 @@
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod vaults;
+pub use vaults::upsert_vault;
+
 pub async fn init_db() -> SqlitePool {
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
