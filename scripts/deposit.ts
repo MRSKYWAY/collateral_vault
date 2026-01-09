@@ -1,5 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
+import { PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { COLLATERAL_MINT } from "./config";
 
 const provider = anchor.AnchorProvider.env();
 anchor.setProvider(provider);
@@ -7,34 +9,35 @@ anchor.setProvider(provider);
 const program = anchor.workspace.CollateralVault;
 
 (async () => {
-  const mint = new anchor.web3.PublicKey(process.env.MINT!);
+  const user = provider.wallet.publicKey;
+  const mint = new PublicKey(COLLATERAL_MINT);
 
-  const [vault] = anchor.web3.PublicKey.findProgramAddressSync(
-    [Buffer.from("vault"), provider.wallet.publicKey.toBuffer()],
+  const [vaultPda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("vault"), user.toBuffer()],
     program.programId
   );
 
-  const userTokenAccount = getAssociatedTokenAddressSync(
+  const userAta = getAssociatedTokenAddressSync(
     mint,
-    provider.wallet.publicKey
+    user
   );
 
-  const vaultTokenAccount = getAssociatedTokenAddressSync(
+  const vaultAta = getAssociatedTokenAddressSync(
     mint,
-    vault,
+    vaultPda,
     true
   );
 
   await program.methods
-    .deposit(new anchor.BN(200))
+    .deposit(new anchor.BN(1_000))
     .accounts({
-      user: provider.wallet.publicKey,
-      vault,
-      userTokenAccount,
-      vaultTokenAccount,
+      user,
+      vault: vaultPda,
+      userTokenAccount: userAta,
+      vaultTokenAccount: vaultAta,
       tokenProgram: TOKEN_PROGRAM_ID,
     })
     .rpc();
 
-  console.log("Deposited 200 tokens");
+  console.log("✅ Deposit successful");
 })();

@@ -266,6 +266,20 @@ pub fn transfer_collateral(
 
     Ok(())
 }
+    pub fn demo_lock(ctx: Context<LockCollateral>, amount: u64) -> Result<()> {
+    lock_collateral(ctx, amount)
+    }
+
+    pub fn demo_unlock(ctx: Context<UnlockCollateral>, amount: u64) -> Result<()> {
+        unlock_collateral(ctx, amount)
+    }
+    pub fn demo_transfer_collateral(
+        ctx: Context<TransferCollateral>,
+        amount: u64,
+    ) -> Result<()> {
+        transfer_collateral(ctx, amount)
+    }
+
 }
 
 

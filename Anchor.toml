@@ -22,6 +22,11 @@ createVaultAta = "npx ts-node scripts/createVaultAta.ts"
 initVault = "npx ts-node scripts/initVault.ts"
 deposit = "npx ts-node scripts/deposit.ts"
 withdraw = "npx ts-node scripts/withdraw.ts"
+setup = "npx ts-node scripts/setup.ts"
+initAuthority = "npx ts-node scripts/initVaultAuthority.ts"
+lock = "npx ts-node scripts/lock.ts"
+unlock = "npx ts-node scripts/unlock.ts"
+transfer = "npx ts-node scripts/transfer.ts"
 
 [hooks]
 
