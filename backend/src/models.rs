@@ -75,3 +75,11 @@ pub struct IntentResponse {
     pub params: serde_json::Value,
     pub note: &'static str,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct ConfirmRequest {
+    pub owner: String,
+    pub event_type: String,
+    pub amount: u64,
+    pub sig: String,
+}

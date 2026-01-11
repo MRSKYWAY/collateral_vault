@@ -1,1 +1,1 @@
-pub const DATABASE_URL: &str = "sqlite::memory:";
+pub const DATABASE_URL: &str = "postgres://postgres:password@localhost/vault_db";
