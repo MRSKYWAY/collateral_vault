@@ -63,3 +63,18 @@ fn transfer_conserves_collateral() {
     assert_eq!(vault_a.total_balance, 70);
     assert_eq!(vault_b.total_balance, 80);
 }
+
+#[test]
+#[should_panic(expected = "MathOverflow")]
+fn lock_overflow() {
+    let mut vault = fresh_vault(Pubkey::new_unique());
+    vault.available_balance = u64::MAX;
+    vault.locked_balance = 1; 
+    vault.available_balance -= 1;
+    vault.locked_balance += 1; 
+}
+
+#[test]
+fn unauthorized_not_tested_here() {
+    // CPI auth is hard to unit test so we will rely on integration tests in TS
+}

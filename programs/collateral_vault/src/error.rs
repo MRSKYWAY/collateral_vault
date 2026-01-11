@@ -13,4 +13,7 @@ pub enum VaultError {
 
     #[msg("Math overflow")]
     MathOverflow,
+
+    #[msg("Cannot withdraw all with open positions")]
+    OpenPositionsExist,
 }

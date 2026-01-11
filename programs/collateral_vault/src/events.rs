@@ -25,3 +25,21 @@ pub struct TransferEvent {
     pub amount: u64,
     pub timestamp: i64,
 }
+
+#[event]
+pub struct LockEvent {
+    pub vault: Pubkey,
+    pub caller: Pubkey,  // Log who (which program) locked
+    pub amount: u64,
+    pub new_locked_balance: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct UnlockEvent {
+    pub vault: Pubkey,
+    pub caller: Pubkey,
+    pub amount: u64,
+    pub new_locked_balance: u64,
+    pub timestamp: i64,
+}

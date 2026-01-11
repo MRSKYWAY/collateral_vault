@@ -37,3 +37,25 @@ pub async fn get_tvl(
 
     Json(row.get::<Option<i64>, _>("tvl").unwrap_or(0))
 }
+
+pub async fn get_analytics(
+    State(state): State<AppState>,
+) -> Json<serde_json::Value> {
+    let active = sqlx::query("SELECT COUNT(*) FROM vaults WHERE total_balance > 0")
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+        .get::<i64, _>(0);
+
+    let avg_balance = sqlx::query("SELECT AVG(total_balance) FROM vaults")
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+        .get::<Option<f64>, _>(0).unwrap_or(0.0);
+
+    Json(json!({
+        "active_vaults": active,
+        "avg_balance": avg_balance,
+        "tvl": get_tvl(State(state)).await.0
+    }))
+}

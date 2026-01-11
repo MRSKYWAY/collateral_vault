@@ -1,0 +1,25 @@
+[package]
+name = "collateral-vault-backend-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.collateral-vault-backend]
+path = ".."
+
+[[bin]]
+name = "balances"
+path = "fuzz_targets/balances.rs"
+test = false
+doc = false
+bench = false
+
+[dev-dependencies]
+arbitrary = "1"
+libfuzzer-sys = "0.4"

@@ -51,6 +51,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/tx/transfer", post(tx_transfer))
         .route("/tx/confirm", post(confirm_tx))
         .route("/ws", get(ws_handler))
+        .route("/analytics", get(get_analytics))
         .with_state(state);
 
     let listener = TcpListener::bind("0.0.0.0:3000").await?;
@@ -84,6 +85,7 @@ async fn reconcile_all_vaults(db: &PgPool) {
             let db_available = db_row.get::<i64, _>(2) as u64;
 
             if vault.total_balance != db_total || vault.locked_balance != db_locked || vault.available_balance != db_available {
+                println!("ALERT: Discrepancy for vault {}: on-chain {} vs DB {}", owner, vault.total_balance, db_total);
                 sqlx::query("INSERT INTO reconciliation_logs (vault_owner, discrepancy, logged_at) VALUES ($1, $2, NOW())")
                     .bind(&owner)
                     .bind(format!("Mismatch: on-chain {} vs DB {}", vault.total_balance, db_total))

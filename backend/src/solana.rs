@@ -2,8 +2,8 @@ use anyhow::{Result, anyhow};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
-use borsh::BorshDeserialize;
-
+use backoff::{ExponentialBackoff, retry};
+use anchor_lang::prelude::AccountDeserialize;
 use crate::models::CollateralVaultAccount;
 
 pub const RPC_URL: &str = "http://127.0.0.1:8899";
@@ -18,20 +18,12 @@ pub fn fetch_vault(owner: &Pubkey) -> Result<(Pubkey, CollateralVaultAccount)> {
         &program_id,
     );
 
-    // Add simple retry
-    let mut attempts = 0;
-    loop {
-        match client.get_account(&vault_pda) {
-            Ok(account) => {
-                let data = &account.data[8..];
-                let vault = CollateralVaultAccount::try_from_slice(data)?;
-                return Ok((vault_pda, vault));
-            }
-            Err(_) if attempts < 3 => {
-                attempts += 1;
-                std::thread::sleep(std::time::Duration::from_secs(1));
-            }
-            Err(_) => return Err(anyhow!("vault account not found after retries")),
-        }
-    }
+    let account = retry(ExponentialBackoff::default(), || {
+        client.get_account(&vault_pda).map_err(backoff::Error::transient)
+    })?;
+
+    let mut data: &[u8] = &account.data;
+    let vault = CollateralVaultAccount::try_deserialize(&mut data)?;
+
+    Ok((vault_pda, vault))
 }

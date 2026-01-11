@@ -1,20 +1,25 @@
-use anchor_spl::token_interface::{
-    self,
-    TokenAccount,
-    TokenInterface,
-    Transfer,
+use anchor_spl::{
+    associated_token,
+    token_interface::{
+        self,
+        Mint,
+        TokenAccount,
+        TokenInterface,
+        TransferChecked,
+    },
 };
+use anchor_lang::prelude::log;
 use anchor_lang::prelude::InterfaceAccount;
 use anchor_lang::prelude::*;
-
+use anchor_spl::associated_token::AssociatedToken;
 pub mod state;
 pub mod error;
 pub mod events;
 
+
 use state::*;
 use error::*;
 use events::*;
-
 
 declare_id!("CqYzY3dRdbEBUg29TFBWXLrQQhumMeyRr6vJv76RNiTq");
 
@@ -23,13 +28,29 @@ pub mod collateral_vault {
     use super::*;
 
     pub fn initialize_vault(ctx: Context<InitializeVault>) -> Result<()> {
+        // Create associated token account for the vault PDA first (uses immutable AccountInfo)
+        associated_token::create(
+            CpiContext::new(
+                ctx.accounts.associated_token_program.to_account_info(),
+                associated_token::Create {
+                    payer: ctx.accounts.user.to_account_info(),
+                    associated_token: ctx.accounts.vault_token_account.to_account_info(),
+                    authority: ctx.accounts.vault.to_account_info(),
+                    mint: ctx.accounts.token_mint.to_account_info(),
+                    system_program: ctx.accounts.system_program.to_account_info(),
+                    token_program: ctx.accounts.token_program.to_account_info(),
+                },
+            ),
+        )?;
+
+        // Now mutably borrow and set fields
         let vault = &mut ctx.accounts.vault;
 
-        // authority
+        // Set authority and token account
         vault.owner = ctx.accounts.user.key();
         vault.token_account = ctx.accounts.vault_token_account.key();
 
-        // genesis invariants
+        // Genesis invariants
         vault.total_balance = 0;
         vault.locked_balance = 0;
         vault.available_balance = 0;
@@ -42,248 +63,269 @@ pub mod collateral_vault {
 
         Ok(())
     }
-
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
-    require!(amount > 0, VaultError::InvalidAmount);
+        require!(amount > 0, VaultError::InvalidAmount);
 
-    let vault_key = ctx.accounts.vault.key();
-    let user_key = ctx.accounts.user.key();
-    let now = Clock::get()?.unix_timestamp;
+        let vault_key = ctx.accounts.vault.key();
+        let user_key = ctx.accounts.user.key();
+        let now = Clock::get()?.unix_timestamp;
 
-    let vault = &mut ctx.accounts.vault;
+        let vault = &mut ctx.accounts.vault;
 
-    // SPL transfer
-    token_interface::transfer(
-    CpiContext::new(
-        ctx.accounts.token_program.to_account_info(),
-        Transfer {
-            from: ctx.accounts.user_token_account.to_account_info(),
-            to: ctx.accounts.vault_token_account.to_account_info(),
-            authority: ctx.accounts.user.to_account_info(),
-        },
-    ),
-    amount,
-)?;
+        // SPL transfer (checked)
+        token_interface::transfer_checked(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.user_token_account.to_account_info(),
+                    to: ctx.accounts.vault_token_account.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                    mint: ctx.accounts.mint.to_account_info(),
+                },
+            ),
+            amount,
+            ctx.accounts.mint.decimals,
+        )?;
 
+        vault.total_balance = vault
+            .total_balance
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    vault.total_balance = vault
-        .total_balance
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.available_balance = vault
+            .available_balance
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    vault.available_balance = vault
-        .available_balance
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.total_deposited = vault
+            .total_deposited
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    vault.total_deposited = vault
-        .total_deposited
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        emit!(DepositEvent {
+            user: user_key,
+            vault: vault_key,
+            amount,
+            new_total_balance: vault.total_balance,
+            timestamp: now,
+        });
 
-    emit!(DepositEvent {
-        user: user_key,
-        vault: vault_key,
-        amount,
-        new_total_balance: vault.total_balance,
-        timestamp: now,
-    });
+        Ok(())
+    }
 
-    Ok(())
-}
+    pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
+        require!(amount > 0, VaultError::InvalidAmount);
 
-pub fn withdraw(ctx: Context<Withdraw>, amount: u64) -> Result<()> {
-    require!(amount > 0, VaultError::InvalidAmount);
+        let vault_key = ctx.accounts.vault.key();
+        let vault_ai = ctx.accounts.vault.to_account_info();
+        let user_key = ctx.accounts.user.key();
+        let now = Clock::get()?.unix_timestamp;
 
-    let vault_key = ctx.accounts.vault.key();
-    let vault_ai = ctx.accounts.vault.to_account_info();
-    let user_key = ctx.accounts.user.key();
-    let now = Clock::get()?.unix_timestamp;
+        let vault = &mut ctx.accounts.vault;
 
-    let vault = &mut ctx.accounts.vault;
+        // Enforce available balance (locked funds cannot be withdrawn)
+        require!(
+            vault.available_balance >= amount,
+            VaultError::InsufficientAvailableBalance
+        );
 
-    // Enforce available balance (locked funds cannot be withdrawn)
-    require!(
-        vault.available_balance >= amount,
-        VaultError::InsufficientAvailableBalance
-    );
+        // Extra check for full withdrawal: no open positions (locked == 0)
+        if amount == vault.total_balance {
+            require!(vault.locked_balance == 0, VaultError::OpenPositionsExist);
+        }
 
-    // PDA signer seeds
-    let seeds = &[
-        b"vault",
-        vault.owner.as_ref(),
-        &[vault.bump],
-    ];
-    let signer = &[&seeds[..]];
+        // PDA signer seeds
+        let seeds = &[
+            b"vault",
+            vault.owner.as_ref(),
+            &[vault.bump],
+        ];
+        let signer = &[&seeds[..]];
 
-    // SPL token transfer: vault → user
-    token_interface::transfer(
-        CpiContext::new_with_signer(
-            ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.vault_token_account.to_account_info(),
-                to: ctx.accounts.user_token_account.to_account_info(),
-                authority: vault_ai,
-            },
-            signer,
-        ),
-        amount,
-    )?;
+        // SPL token transfer: vault → user (checked)
+        token_interface::transfer_checked(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                TransferChecked {
+                    from: ctx.accounts.vault_token_account.to_account_info(),
+                    to: ctx.accounts.user_token_account.to_account_info(),
+                    authority: vault_ai,
+                    mint: ctx.accounts.mint.to_account_info(),
+                },
+                signer,
+            ),
+            amount,
+            ctx.accounts.mint.decimals,
+        )?;
 
-    // Update balances (checked math)
-    vault.total_balance = vault
-        .total_balance
-        .checked_sub(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        // Update balances (checked math)
+        vault.total_balance = vault
+            .total_balance
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    vault.available_balance = vault
-        .available_balance
-        .checked_sub(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.available_balance = vault
+            .available_balance
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    vault.total_withdrawn = vault
-        .total_withdrawn
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.total_withdrawn = vault
+            .total_withdrawn
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    emit!(WithdrawEvent {
-        user: user_key,
-        vault: vault_key,
-        amount,
-        new_total_balance: vault.total_balance,
-        timestamp: now,
-    });
+        emit!(WithdrawEvent {
+            user: user_key,
+            vault: vault_key,
+            amount,
+            new_total_balance: vault.total_balance,
+            timestamp: now,
+        });
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub fn initialize_vault_authority(
-    ctx: Context<InitializeVaultAuthority>,
-    authorized_programs: Vec<Pubkey>,
-) -> Result<()> {
-    require!(
-        authorized_programs.len() <= 16,
-        VaultError::InvalidAmount
-    );
+    pub fn initialize_vault_authority(
+        ctx: Context<InitializeVaultAuthority>,
+        authorized_programs: Vec<Pubkey>,
+    ) -> Result<()> {
+        require!(
+            authorized_programs.len() <= 16,
+            VaultError::InvalidAmount
+        );
 
-    let authority = &mut ctx.accounts.vault_authority;
-    authority.authorized_programs = authorized_programs;
-    authority.bump = ctx.bumps.vault_authority;
+        let authority = &mut ctx.accounts.vault_authority;
+        authority.authorized_programs = authorized_programs;
+        authority.bump = ctx.bumps.vault_authority;
 
-    Ok(())
-}
+        Ok(())
+    }
 
-pub fn lock_collateral(ctx: Context<LockCollateral>, amount: u64) -> Result<()> {
-    require!(amount > 0, VaultError::InvalidAmount);
+    pub fn lock_collateral(ctx: Context<LockCollateral>, amount: u64) -> Result<()> {
+        require!(amount > 0, VaultError::InvalidAmount);
 
-    let vault = &mut ctx.accounts.vault;
+        let vault = &mut ctx.accounts.vault;
+        let caller_key = ctx.accounts.caller_program.key();
+        let vault_key = vault.key();
+        let now = Clock::get()?.unix_timestamp;
 
-    require!(
-        vault.available_balance >= amount,
-        VaultError::InsufficientAvailableBalance
-    );
+        require!(
+            vault.available_balance >= amount,
+            VaultError::InsufficientAvailableBalance
+        );
 
-    vault.available_balance = vault
-        .available_balance
-        .checked_sub(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.available_balance = vault
+            .available_balance
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    vault.locked_balance = vault
-        .locked_balance
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.locked_balance = vault
+            .locked_balance
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    Ok(())
-}
+        emit!(LockEvent {
+            vault: vault_key,
+            caller: caller_key,
+            amount,
+            new_locked_balance: vault.locked_balance,
+            timestamp: now,
+        });
 
-pub fn unlock_collateral(ctx: Context<UnlockCollateral>, amount: u64) -> Result<()> {
-    require!(amount > 0, VaultError::InvalidAmount);
+        Ok(())
+    }
 
-    let vault = &mut ctx.accounts.vault;
+    pub fn unlock_collateral(ctx: Context<UnlockCollateral>, amount: u64) -> Result<()> {
+        require!(amount > 0, VaultError::InvalidAmount);
 
-    require!(
-        vault.locked_balance >= amount,
-        VaultError::InvalidAmount
-    );
+        let vault = &mut ctx.accounts.vault;
+        let caller_key = ctx.accounts.caller_program.key();
+        let vault_key = vault.key();
+        let now = Clock::get()?.unix_timestamp;
 
-    vault.locked_balance = vault
-        .locked_balance
-        .checked_sub(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        require!(
+            vault.locked_balance >= amount,
+            VaultError::InsufficientAvailableBalance
+        );
 
-    vault.available_balance = vault
-        .available_balance
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        vault.locked_balance = vault
+            .locked_balance
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    Ok(())
-}
+        vault.available_balance = vault
+            .available_balance
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-pub fn transfer_collateral(
-    ctx: Context<TransferCollateral>,
-    amount: u64,
-) -> Result<()> {
-    require!(amount > 0, VaultError::InvalidAmount);
+        emit!(UnlockEvent {
+            vault: vault_key,
+            caller: caller_key,
+            amount,
+            new_locked_balance: vault.locked_balance,
+            timestamp: now,
+        });
 
-    let now = Clock::get()?.unix_timestamp;
+        Ok(())
+    }
 
-    let from_vault = &mut ctx.accounts.from_vault;
-    let to_vault = &mut ctx.accounts.to_vault;
+    pub fn transfer_collateral(ctx: Context<TransferCollateral>, amount: u64) -> Result<()> {
+        require!(amount > 0, VaultError::InvalidAmount);
 
-    // Ensure sufficient free collateral
-    require!(
-        from_vault.available_balance >= amount,
-        VaultError::InsufficientAvailableBalance
-    );
+        let from_vault = &mut ctx.accounts.from_vault;
+        let to_vault = &mut ctx.accounts.to_vault;
+        let now = Clock::get()?.unix_timestamp;
 
-    // Update balances atomically
-    from_vault.available_balance = from_vault
-        .available_balance
-        .checked_sub(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        require!(
+            from_vault.total_balance >= amount,
+            VaultError::InsufficientAvailableBalance
+        );
 
-    from_vault.total_balance = from_vault
-        .total_balance
-        .checked_sub(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        from_vault.total_balance = from_vault
+            .total_balance
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    to_vault.available_balance = to_vault
-        .available_balance
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        from_vault.available_balance = from_vault
+            .available_balance
+            .checked_sub(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    to_vault.total_balance = to_vault
-        .total_balance
-        .checked_add(amount)
-        .ok_or(VaultError::MathOverflow)?;
+        to_vault.total_balance = to_vault
+            .total_balance
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    emit!(TransferEvent {
-        from_vault: from_vault.key(),
-        to_vault: to_vault.key(),
-        amount,
-        timestamp: now,
-    });
+        to_vault.available_balance = to_vault
+            .available_balance
+            .checked_add(amount)
+            .ok_or(VaultError::MathOverflow)?;
 
-    Ok(())
-}
+        emit!(TransferEvent {
+            from_vault: from_vault.key(),
+            to_vault: to_vault.key(),
+            amount,
+            timestamp: now,
+        });
+
+        Ok(())
+    }
+
     pub fn demo_lock(ctx: Context<LockCollateral>, amount: u64) -> Result<()> {
-    lock_collateral(ctx, amount)
+        lock_collateral(ctx, amount)
     }
 
     pub fn demo_unlock(ctx: Context<UnlockCollateral>, amount: u64) -> Result<()> {
         unlock_collateral(ctx, amount)
     }
+
     pub fn demo_transfer_collateral(
         ctx: Context<TransferCollateral>,
         amount: u64,
     ) -> Result<()> {
         transfer_collateral(ctx, amount)
     }
-
 }
-
-
-
 
 #[derive(Accounts)]
 pub struct InitializeVault<'info> {
@@ -299,11 +341,16 @@ pub struct InitializeVault<'info> {
     )]
     pub vault: Account<'info, CollateralVault>,
 
-    /// CHECK:
-    /// SPL token account that will hold USDT.
-    /// Must be owned by the vault PDA (validated in later instructions).
+    /// CHECK: SPL token account that will hold USDT. Created via CPI.
     #[account(mut)]
     pub vault_token_account: UncheckedAccount<'info>,
+
+    #[account(mut)]
+    pub token_mint: InterfaceAccount<'info, Mint>,  // USDT mint
+
+    pub associated_token_program: Program<'info, AssociatedToken>,
+
+    pub token_program: Interface<'info, TokenInterface>,
 
     pub system_program: Program<'info, System>,
 }
@@ -326,12 +373,17 @@ pub struct Deposit<'info> {
 
     #[account(
         mut,
-        constraint = vault_token_account.key() == vault.token_account
+        constraint = vault_token_account.key() == vault.token_account,
+        constraint = vault_token_account.mint == mint.key(),
     )]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    pub token_program: Interface<'info, TokenInterface>,
+    #[account(
+        constraint = user_token_account.mint == mint.key(),
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
 
+    pub token_program: Interface<'info, TokenInterface>,
 }
 
 #[derive(Accounts)]
@@ -349,12 +401,21 @@ pub struct Withdraw<'info> {
 
     #[account(
         mut,
-        constraint = vault_token_account.key() == vault.token_account
+        constraint = vault_token_account.key() == vault.token_account,
+        constraint = vault_token_account.mint == mint.key(),
     )]
     pub vault_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = user_token_account.mint == mint.key(),
+    )]
     pub user_token_account: InterfaceAccount<'info, TokenAccount>,
+
+    #[account(
+        constraint = user_token_account.mint == mint.key(),
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
 
     pub token_program: Interface<'info, TokenInterface>,
 }
@@ -448,7 +509,6 @@ pub struct TransferCollateral<'info> {
     )]
     pub to_vault: Account<'info, CollateralVault>,
 }
-
 
 #[cfg(test)]
 mod tests;

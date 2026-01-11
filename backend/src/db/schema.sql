@@ -33,3 +33,16 @@ CREATE TABLE IF NOT EXISTS reconciliation_logs (
     resolved BOOLEAN DEFAULT FALSE,
     logged_at TIMESTAMP WITH TIME ZONE NOT NULL
 );
+
+-- Add index
+CREATE INDEX IF NOT EXISTS idx_vaults_owner ON vaults(owner);
+CREATE INDEX IF NOT EXISTS idx_transactions_owner ON vault_transactions(owner);
+
+-- Audit trail bonus
+CREATE TABLE IF NOT EXISTS audit_trail (
+    id SERIAL PRIMARY KEY,
+    action TEXT NOT NULL,  -- e.g., 'query_balance', 'tx_confirm'
+    user TEXT,
+    details JSONB,
+    timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+);
