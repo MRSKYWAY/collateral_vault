@@ -21,7 +21,7 @@ use state::*;
 use error::*;
 use events::*;
 
-declare_id!("CqYzY3dRdbEBUg29TFBWXLrQQhumMeyRr6vJv76RNiTq");
+declare_id!("4wWwGCoGQDN7G7hnqM5QvEVQw54KRutss19VeSoEhZis");
 
 #[program]
 pub mod collateral_vault {

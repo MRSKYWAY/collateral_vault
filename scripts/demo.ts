@@ -4,7 +4,6 @@
 
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { CollateralVault } from "../target/types/collateral_vault";
 import {
   createMint,
   getAssociatedTokenAddressSync,
@@ -21,7 +20,7 @@ async function runDemo() {
 
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
-  const program = anchor.workspace.CollateralVault as Program<CollateralVault>;
+  const program = anchor.workspace.CollateralVault;
 
   // Step 1: Setup - Create USDT mint (mock)
   console.log("\n1. Setting up mock USDT mint...");
