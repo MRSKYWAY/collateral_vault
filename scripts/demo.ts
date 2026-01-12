@@ -19,7 +19,7 @@ import {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  // kill TS generics forever
+  
   const program = anchor.workspace.CollateralVault as any;
 
   /* -------------------------------------------------- */
@@ -130,11 +130,6 @@ import {
 
   console.log(" Deposit successful");
 
-  /* -------------------------------------------------- */
-  /* 8. Mock CPI program                                */
-  /* -------------------------------------------------- */
-  const mockProgram = Keypair.generate();
-  console.log("Mock CPI program:", mockProgram.publicKey.toBase58());
 
   /* -------------------------------------------------- */
   /* 9. Initialize vault authority (once)               */
@@ -142,7 +137,7 @@ import {
   const existing = await program.account.vaultAuthority.fetchNullable(
     vaultAuthorityPda
   );
-  console.log("Vault authority exists?", existing);
+ 
   if (!existing) {
     await program.methods
       .initializeVaultAuthority([program.programId])
@@ -167,7 +162,7 @@ import {
     callerProgram: program.programId,
     vaultAuthority: vaultAuthorityPda,
     vault: vaultPda,
-  })   // REQUIRED
+  })
   .rpc();
 
 console.log("Locked");

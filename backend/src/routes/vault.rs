@@ -14,8 +14,8 @@ use crate::tx::{deposit_intent, withdraw_intent, lock_intent, unlock_intent, tra
 use chrono::Utc;
 use spl_token::id as token_program_id;
 
-// Assume USDT mint (replace with real)
-const USDT_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Devnet USDT example
+
+const USDT_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; //example
 
 pub async fn get_vault(
     State(state): State<AppState>,
@@ -184,7 +184,7 @@ pub async fn confirm_tx(
     AxumJson("Transaction logged".to_string())
 }
 
-// Bonus: Mock position open (simulates CPI lock)
+// Bonus: Mock position open to simulate CPI locking collateral
 pub async fn mock_position_open(
     Json(req): Json<AmountRequest>,
 ) -> AxumJson<String> {

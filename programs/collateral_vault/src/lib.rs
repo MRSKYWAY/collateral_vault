@@ -131,13 +131,13 @@ pub mod collateral_vault {
 
         let vault = &mut ctx.accounts.vault;
 
-        // Enforce available balance (locked funds cannot be withdrawn)
+        
         require!(
             vault.available_balance >= amount,
             VaultError::InsufficientAvailableBalance
         );
 
-        // Extra check for full withdrawal: no open positions (locked == 0)
+        //extra check
         if amount == vault.total_balance {
             require!(vault.locked_balance == 0, VaultError::OpenPositionsExist);
         }
@@ -356,7 +356,7 @@ pub struct InitializeVault<'info> {
     #[account(mut)]
     pub token_mint: InterfaceAccount<'info, Mint>,  // USDT mint
 
-    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub associated_token_346: Program<'info, AssociatedToken>,
 
     pub token_program: Interface<'info, TokenInterface>,
 
