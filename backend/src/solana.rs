@@ -23,7 +23,7 @@ pub fn fetch_vault(owner: &Pubkey) -> Result<(Pubkey, CollateralVaultAccount)> {
     })?;
 
     let mut data: &[u8] = &account.data;
-    let vault = CollateralVaultAccount::try_from_slice(&data)?;
+    let vault = CollateralVaultAccount::deserialize(&mut data)?;
 
     Ok((vault_pda, vault))
 }

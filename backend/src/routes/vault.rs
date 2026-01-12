@@ -5,7 +5,7 @@ use crate::models::{AmountRequest, TransferRequest, TxResponse, ConfirmRequest, 
 use crate::solana::fetch_vault;
 use crate::db::upsert_vault;
 use crate::AppState;
-use solana_sdk::{instruction::{Instruction, AccountMeta}, transaction::Transaction, message::VersionedMessage, hash::hashv, pubkey};
+use solana_sdk::{instruction::{Instruction, AccountMeta}, hash::hashv, pubkey};
 use base64::{engine::general_purpose, Engine};
 use bincode;
 use solana_client::rpc_client::RpcClient;
@@ -13,7 +13,6 @@ use crate::solana::{RPC_URL, PROGRAM_ID};
 use crate::tx::{deposit_intent, withdraw_intent, lock_intent, unlock_intent, transfer_intent};
 use chrono::Utc;
 use spl_token::id as token_program_id;
-use spl_associated_token_account::id as ata_program_id;
 
 // Assume USDT mint (replace with real)
 const USDT_MINT: &str = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"; // Devnet USDT example
@@ -58,89 +57,101 @@ fn instruction_discriminator(name: &str) -> [u8; 8] {
     d
 }
 
+// pub async fn tx_deposit(
+//     Json(req): Json<AmountRequest>,
+// ) -> impl IntoResponse {
+//     let owner = Pubkey::from_str(&req.owner).expect("Invalid pubkey");
+//     let program_id = Pubkey::from_str(PROGRAM_ID).expect("Invalid program ID");
+
+//     let client = RpcClient::new(RPC_URL.to_string());
+//     let blockhash = client.get_latest_blockhash().expect("Blockhash failed");
+
+//     let discriminator = instruction_discriminator("deposit");
+//     let mut data = discriminator.to_vec();
+//     data.extend_from_slice(&req.amount.to_le_bytes());
+
+//     let (vault_pda, _) = Pubkey::find_program_address(&[b"vault", owner.as_ref()], &program_id);
+
+//     // User ATA (assume exists; fetch or create if needed)
+//     let user_token = spl_associated_token_account::get_associated_token_address(&owner, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
+//     let vault_token = spl_associated_token_account::get_associated_token_address(&vault_pda, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
+
+//     let ix = Instruction {
+//         program_id,
+//         accounts: vec![
+//             AccountMeta::new(owner, true),  // user (signer)
+//             AccountMeta::new(vault_pda, false),  // vault
+//             AccountMeta::new(user_token, false),  // user_token_account
+//             AccountMeta::new(vault_token, false),  // vault_token_account
+//             AccountMeta::new_readonly(token_program_id(), false),  // token_program
+//             AccountMeta::new_readonly(pubkey::Pubkey::from_str(USDT_MINT).unwrap(), false),  // mint
+//         ],
+//         data,
+//     };
+
+//     let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&owner)));
+//     let tx = Transaction::new_unsigned(message);
+
+//     let serialized = bincode::serialize(&tx).expect("Serialize failed");
+//     let encoded = general_purpose::STANDARD.encode(serialized);
+
+//     AxumJson(TxResponse {
+//         transaction_base64: encoded,
+//     })
+// }
+
+// pub async fn tx_withdraw(
+//     Json(req): Json<AmountRequest>,
+// ) -> impl IntoResponse {
+//     let owner = Pubkey::from_str(&req.owner).expect("Invalid pubkey");
+//     let program_id = Pubkey::from_str(PROGRAM_ID).expect("Invalid program ID");
+
+//     let client = RpcClient::new(RPC_URL.to_string());
+//     let blockhash = client.get_latest_blockhash().expect("Blockhash failed");
+
+//     let discriminator = instruction_discriminator("withdraw");
+//     let mut data = discriminator.to_vec();
+//     data.extend_from_slice(&req.amount.to_le_bytes());
+
+//     let (vault_pda, _) = Pubkey::find_program_address(&[b"vault", owner.as_ref()], &program_id);
+
+//     let user_token = spl_associated_token_account::get_associated_token_address(&owner, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
+//     let vault_token = spl_associated_token_account::get_associated_token_address(&vault_pda, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
+
+//     let ix = Instruction {
+//         program_id,
+//         accounts: vec![
+//             AccountMeta::new(owner, true),  // user (signer)
+//             AccountMeta::new(vault_pda, false),  // vault
+//             AccountMeta::new(vault_token, false),  // vault_token_account
+//             AccountMeta::new(user_token, false),  // user_token_account
+//             AccountMeta::new_readonly(token_program_id(), false),  // token_program
+//             AccountMeta::new_readonly(pubkey::Pubkey::from_str(USDT_MINT).unwrap(), false),  // mint
+//         ],
+//         data,
+//     };
+
+//     let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&owner)));
+//     let tx = Transaction::new_unsigned(message);
+
+//     let serialized = bincode::serialize(&tx).expect("Serialize failed");
+//     let encoded = general_purpose::STANDARD.encode(serialized);
+
+//     AxumJson(TxResponse {
+//         transaction_base64: encoded,
+//     })
+// }
+
 pub async fn tx_deposit(
     Json(req): Json<AmountRequest>,
-) -> impl IntoResponse {
-    let owner = Pubkey::from_str(&req.owner).expect("Invalid pubkey");
-    let program_id = Pubkey::from_str(PROGRAM_ID).expect("Invalid program ID");
-
-    let client = RpcClient::new(RPC_URL.to_string());
-    let blockhash = client.get_latest_blockhash().expect("Blockhash failed");
-
-    let discriminator = instruction_discriminator("deposit");
-    let mut data = discriminator.to_vec();
-    data.extend_from_slice(&req.amount.to_le_bytes());
-
-    let (vault_pda, _) = Pubkey::find_program_address(&[b"vault", owner.as_ref()], &program_id);
-
-    // User ATA (assume exists; fetch or create if needed)
-    let user_token = spl_associated_token_account::get_associated_token_address(&owner, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
-    let vault_token = spl_associated_token_account::get_associated_token_address(&vault_pda, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
-
-    let ix = Instruction {
-        program_id,
-        accounts: vec![
-            AccountMeta::new(owner, true),  // user (signer)
-            AccountMeta::new(vault_pda, false),  // vault
-            AccountMeta::new(user_token, false),  // user_token_account
-            AccountMeta::new(vault_token, false),  // vault_token_account
-            AccountMeta::new_readonly(token_program_id(), false),  // token_program
-            AccountMeta::new_readonly(pubkey::Pubkey::from_str(USDT_MINT).unwrap(), false),  // mint
-        ],
-        data,
-    };
-
-    let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&owner)));
-    let tx = Transaction::new_unsigned(message);
-
-    let serialized = bincode::serialize(&tx).expect("Serialize failed");
-    let encoded = general_purpose::STANDARD.encode(serialized);
-
-    AxumJson(TxResponse {
-        transaction_base64: encoded,
-    })
+) -> Json<IntentResponse> {
+    Json(deposit_intent(req.amount))
 }
 
 pub async fn tx_withdraw(
     Json(req): Json<AmountRequest>,
-) -> impl IntoResponse {
-    let owner = Pubkey::from_str(&req.owner).expect("Invalid pubkey");
-    let program_id = Pubkey::from_str(PROGRAM_ID).expect("Invalid program ID");
-
-    let client = RpcClient::new(RPC_URL.to_string());
-    let blockhash = client.get_latest_blockhash().expect("Blockhash failed");
-
-    let discriminator = instruction_discriminator("withdraw");
-    let mut data = discriminator.to_vec();
-    data.extend_from_slice(&req.amount.to_le_bytes());
-
-    let (vault_pda, _) = Pubkey::find_program_address(&[b"vault", owner.as_ref()], &program_id);
-
-    let user_token = spl_associated_token_account::get_associated_token_address(&owner, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
-    let vault_token = spl_associated_token_account::get_associated_token_address(&vault_pda, &pubkey::Pubkey::from_str(USDT_MINT).unwrap());
-
-    let ix = Instruction {
-        program_id,
-        accounts: vec![
-            AccountMeta::new(owner, true),  // user (signer)
-            AccountMeta::new(vault_pda, false),  // vault
-            AccountMeta::new(vault_token, false),  // vault_token_account
-            AccountMeta::new(user_token, false),  // user_token_account
-            AccountMeta::new_readonly(token_program_id(), false),  // token_program
-            AccountMeta::new_readonly(pubkey::Pubkey::from_str(USDT_MINT).unwrap(), false),  // mint
-        ],
-        data,
-    };
-
-    let message = VersionedMessage::Legacy(Message::new(&[ix], Some(&owner)));
-    let tx = Transaction::new_unsigned(message);
-
-    let serialized = bincode::serialize(&tx).expect("Serialize failed");
-    let encoded = general_purpose::STANDARD.encode(serialized);
-
-    AxumJson(TxResponse {
-        transaction_base64: encoded,
-    })
+) -> Json<IntentResponse> {
+    Json(withdraw_intent(req.amount))
 }
 
 pub async fn tx_lock(Json(req): Json<AmountRequest>) -> AxumJson<IntentResponse> {

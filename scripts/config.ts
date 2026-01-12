@@ -1,1 +1,1 @@
-export const COLLATERAL_MINT = "GCU9JaPeaqHSUeQZwuBiYrNx6YXqo4m2vvtriT7HqGcx";
+export const COLLATERAL_MINT = "3gRnkhd9M4FrZYeTCZ9vAb42UYR5xeeM6qBZMUMiJdJq";
