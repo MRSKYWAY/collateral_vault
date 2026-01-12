@@ -4,17 +4,37 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# Web
 axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.7", features = ["runtime-tokio", "tls-native-tls", "postgres", "chrono"] }
+
+# Database (SQLite ONLY)
+sqlx = { version = "=0.7.4", features = ["runtime-tokio", "tls-native-tls", "sqlite", "postgres", "chrono"] }
 chrono = "0.4"
+
+# Utils
 futures = "0.3"
+anyhow = "1.0"
+
+# Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-anyhow = "1.0"
-solana-client = "2.2.1"
-solana-sdk = "2.2.1"
 borsh = "1.5"
-base64 = "0.22"
 bincode = "1.3"
+base64 = "0.22.1"
+
+# Solana — ALL pinned to same patch
+solana-sdk = "=2.3.1"
+solana-client = "=2.3.1"
+solana-signature = "=2.3.0"
+
+
+
+# SPL
 spl-token = "4.0"
+
+# Retry
+backoff = "0.4"
+
+# Random (fix getrandom target issues)
+getrandom = { version = "0.2", features = ["std"] }

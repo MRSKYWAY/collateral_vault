@@ -21,7 +21,15 @@ use state::*;
 use error::*;
 use events::*;
 
-declare_id!("4wWwGCoGQDN7G7hnqM5QvEVQw54KRutss19VeSoEhZis");
+use getrandom::register_custom_getrandom!;
+
+fn custom_getrandom(_buf: &mut [u8]) -> Result<(), getrandom::Error> {
+    Err(getrandom::Error::UNSUPPORTED)
+}
+
+register_custom_getrandom!(custom_getrandom);
+
+declare_id!("4Aay78HNn41t43gCAyrwRgkYNC4GMey82DECYZAUD2i9");
 
 #[program]
 pub mod collateral_vault {

@@ -3,7 +3,7 @@ use solana_client::rpc_client::RpcClient;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use backoff::{ExponentialBackoff, retry};
-use anchor_lang::prelude::AccountDeserialize;
+use borsh::BorshDeserialize;
 use crate::models::CollateralVaultAccount;
 
 pub const RPC_URL: &str = "http://127.0.0.1:8899";
@@ -23,7 +23,7 @@ pub fn fetch_vault(owner: &Pubkey) -> Result<(Pubkey, CollateralVaultAccount)> {
     })?;
 
     let mut data: &[u8] = &account.data;
-    let vault = CollateralVaultAccount::try_deserialize(&mut data)?;
+    let vault = CollateralVaultAccount::try_from_slice(&data)?;
 
     Ok((vault_pda, vault))
 }
