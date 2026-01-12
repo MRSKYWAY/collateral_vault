@@ -14,18 +14,17 @@ import {
 } from "@solana/web3.js";
 
 (async () => {
-  console.log("🚀 Starting Collateral Vault Demo");
+  console.log(" Starting Collateral Vault Demo");
 
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  // IMPORTANT: kill TS infinite generics
+  // kill TS generics forever
   const program = anchor.workspace.CollateralVault as any;
 
   /* -------------------------------------------------- */
-  /* 1. Create mock USDT mint                            */
+  /* 1. Create collateral mint                          */
   /* -------------------------------------------------- */
-  console.log("\n1️⃣ Creating mock USDT mint...");
   const mint = await createMint(
     provider.connection,
     provider.wallet.payer,
@@ -36,19 +35,19 @@ import {
   console.log("Mint:", mint.toBase58());
 
   /* -------------------------------------------------- */
-  /* 2. Create user & fund                              */
+  /* 2. Create user                                     */
   /* -------------------------------------------------- */
   const user = Keypair.generate();
   await provider.connection.confirmTransaction(
     await provider.connection.requestAirdrop(
       user.publicKey,
-      2 * LAMPORTS_PER_SOL
+      5 * LAMPORTS_PER_SOL
     )
   );
   console.log("User:", user.publicKey.toBase58());
 
   /* -------------------------------------------------- */
-  /* 3. Create USER token account                       */
+  /* 3. User ATA                                        */
   /* -------------------------------------------------- */
   const userTokenAccount = await getOrCreateAssociatedTokenAccount(
     provider.connection,
@@ -71,46 +70,42 @@ import {
   );
 
   console.log("Vault PDA:", vaultPda.toBase58());
-  console.log("Vault Authority PDA:", vaultAuthorityPda.toBase58());
+  console.log("VaultAuthority PDA:", vaultAuthorityPda.toBase58());
 
   /* -------------------------------------------------- */
-  /* 5. Create VAULT token account (PDA ATA)            */
+  /* 5. Derive vault ATA (DO NOT CREATE)                */
   /* -------------------------------------------------- */
-  const vaultTokenAccount = await getOrCreateAssociatedTokenAccount(
-    provider.connection,
-    provider.wallet.payer,
-    mint,
-    vaultPda,
-    true // allowOwnerOffCurve — CRITICAL
+  const [vaultTokenAccount] = PublicKey.findProgramAddressSync(
+    [
+      vaultPda.toBuffer(),
+      TOKEN_PROGRAM_ID.toBuffer(),
+      mint.toBuffer(),
+    ],
+    ASSOCIATED_TOKEN_PROGRAM_ID
   );
-
-  console.log("Vault ATA:", vaultTokenAccount.address.toBase58());
 
   /* -------------------------------------------------- */
   /* 6. Initialize vault                                */
   /* -------------------------------------------------- */
-  console.log("\n2️⃣ Initializing vault...");
   await program.methods
     .initializeVault()
     .accounts({
       user: user.publicKey,
       vault: vaultPda,
-      vaultTokenAccount: vaultTokenAccount.address,
+      vaultTokenAccount,
       tokenMint: mint,
       tokenProgram: TOKEN_PROGRAM_ID,
       associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
       systemProgram: SystemProgram.programId,
-    } as any)
+    })
     .signers([user])
     .rpc();
 
-  console.log("✅ Vault initialized");
+  console.log(" Vault initialized");
 
   /* -------------------------------------------------- */
-  /* 7. Mint + Deposit                                  */
+  /* 7. Mint + deposit                                  */
   /* -------------------------------------------------- */
-  console.log("\n3️⃣ Minting & depositing collateral...");
-
   await mintTo(
     provider.connection,
     provider.wallet.payer,
@@ -125,90 +120,88 @@ import {
     .accounts({
       user: user.publicKey,
       vault: vaultPda,
-      mint: mint,
       userTokenAccount: userTokenAccount.address,
-      vaultTokenAccount: vaultTokenAccount.address,
+      vaultTokenAccount,
+      mint,
       tokenProgram: TOKEN_PROGRAM_ID,
-    } as any)
+    })
     .signers([user])
     .rpc();
 
-  console.log("✅ Deposit successful");
+  console.log(" Deposit successful");
 
   /* -------------------------------------------------- */
-  /* 8. Initialize Vault Authority                      */
+  /* 8. Mock CPI program                                */
   /* -------------------------------------------------- */
-  console.log("\n4️⃣ Initializing vault authority...");
+  const mockProgram = Keypair.generate();
+  console.log("Mock CPI program:", mockProgram.publicKey.toBase58());
 
+  /* -------------------------------------------------- */
+  /* 9. Initialize vault authority (once)               */
+  /* -------------------------------------------------- */
   const existing = await program.account.vaultAuthority.fetchNullable(
     vaultAuthorityPda
   );
-
+  console.log("Vault authority exists?", existing);
   if (!existing) {
     await program.methods
-      .initializeVaultAuthority([program.programId]) // authorize self
+      .initializeVaultAuthority([program.programId])
       .accounts({
         admin: provider.wallet.publicKey,
         vaultAuthority: vaultAuthorityPda,
         systemProgram: SystemProgram.programId,
-      } as any)
+      })
       .rpc();
 
-    console.log("✅ Vault authority initialized");
+    console.log(" Vault authority initialized");
   } else {
-    console.log("⚠️ Vault authority already exists");
+    console.log(" Vault authority already exists");
   }
 
   /* -------------------------------------------------- */
-  /* 9. Lock                                           */
+  /* 10. Lock / Unlock (CPI-simulated)                  */
   /* -------------------------------------------------- */
-  console.log("\n5️⃣ Locking collateral...");
   await program.methods
-    .lockCollateral(new anchor.BN(600))
+  .lockCollateral(new anchor.BN(500))
+  .accounts({
+    callerProgram: program.programId,
+    vaultAuthority: vaultAuthorityPda,
+    vault: vaultPda,
+  })   // REQUIRED
+  .rpc();
+
+console.log("Locked");
+
+  await program.methods
+    .unlockCollateral(new anchor.BN(500))
     .accounts({
       callerProgram: program.programId,
       vaultAuthority: vaultAuthorityPda,
       vault: vaultPda,
-    } as any)
+    })
     .rpc();
 
-  console.log("✅ Locked");
-
-  /* -------------------------------------------------- */
-  /* 10. Unlock                                        */
-  /* -------------------------------------------------- */
-  console.log("\n6️⃣ Unlocking collateral...");
-  await program.methods
-    .unlockCollateral(new anchor.BN(600))
-    .accounts({
-      callerProgram: program.programId,
-      vaultAuthority: vaultAuthorityPda,
-      vault: vaultPda,
-    } as any)
-    .rpc();
-
-  console.log("✅ Unlocked");
+  console.log(" Unlocked");
 
   /* -------------------------------------------------- */
   /* 11. Withdraw                                      */
   /* -------------------------------------------------- */
-  console.log("\n7️⃣ Withdrawing collateral...");
   await program.methods
     .withdraw(new anchor.BN(1_000))
     .accounts({
       user: user.publicKey,
       vault: vaultPda,
-      mint: mint,
-      vaultTokenAccount: vaultTokenAccount.address,
+      vaultTokenAccount,
       userTokenAccount: userTokenAccount.address,
+      mint,
       tokenProgram: TOKEN_PROGRAM_ID,
-    } as any)
+    })
     .signers([user])
     .rpc();
 
-  console.log("✅ Withdraw successful");
-  console.log("\n🎉 DEMO COMPLETE");
+  console.log(" Withdraw successful");
+  console.log(" DEMO COMPLETE");
 })().catch((e) => {
-  console.error("❌ Demo failed");
+  console.error(" Demo failed");
   console.error(e);
 });

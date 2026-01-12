@@ -8,7 +8,7 @@ const program = anchor.workspace.CollateralVault;
 
 (async () => {
   const mint = new anchor.web3.PublicKey(process.env.MINT!);
-
+  console.log("Initializing Vault for mint:", mint.toBase58());
   const [vault] = anchor.web3.PublicKey.findProgramAddressSync(
     [Buffer.from("vault"), provider.wallet.publicKey.toBuffer()],
     program.programId
