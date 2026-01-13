@@ -3,7 +3,6 @@
 
 This repository contains the implementation of a **Collateral Vault Management System** for a decentralized perpetual futures exchange on Solana. It handles secure, non-custodial management of user collateral (USDT) using Anchor for the smart contract and a Rust backend for off-chain services. The system supports deposits, withdrawals, locking/unlocking for trading, and internal transfers, with PostgreSQL for transaction history.
 
-This project was built as part of a recruitment assignment for GoQuant, demonstrating skills in Solana development, Anchor framework, SPL tokens, CPIs, and backend services.
 
 ## Table of Contents
 
