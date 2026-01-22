@@ -19,18 +19,21 @@ import {
 /* --------------------------------------------- */
 
 
-async function proveWithZKCG() {
-  const res = await fetch("http://127.0.0.1:8080/v1/prove", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      secret_value: 700,   // private input
-      threshold: 750       // public policy
-    }),
-  });
+async function proveWithZKCG(score: number, threshold: number) {
+  const res = await fetch(
+    "https://zkcg-production.up.railway.app/demo/prove",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        score,
+        threshold,
+      }),
+    }
+  );
 
   const text = await res.text();
-  console.log("ZKCG /prove response:", text);
+  console.log("ZKCG /demo/prove response:", text);
 
   if (!res.ok) {
     throw new Error(`ZKCG prover failed: ${text}`);
@@ -39,41 +42,42 @@ async function proveWithZKCG() {
   return JSON.parse(text);
 }
 
-async function submitProofToZKCG(
-  proof: string,
-  threshold: number,
-  commitment: number[],
-) {
-  const ZERO_32 = new Array(32).fill(0);
 
-  const res = await fetch("http://127.0.0.1:8080/v1/submit-proof", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      proof,
+// async function submitProofToZKCG(
+//   proof: string,
+//   threshold: number,
+//   commitment: number[],
+// ) {
+//   const ZERO_32 = new Array(32).fill(0);
 
-      public_inputs: {
-        threshold,
-        old_state_root: ZERO_32, // demo: genesis
-        nonce: 1,               // demo: first transition
-      },
+//   const res = await fetch("https://zkcg-production.up.railway.app/demo/prove", {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({
+//       proof,
 
-      new_state_commitment: commitment,
-    }),
-  });
+//       public_inputs: {
+//         threshold,
+//         old_state_root: ZERO_32, // demo: genesis
+//         nonce: 1,               // demo: first transition
+//       },
 
-  const text = await res.text();
-  console.log("ZKCG /submit-proof response:", text);
+//       new_state_commitment: commitment,
+//     }),
+//   });
 
-  if (!res.ok) {
-    throw new Error(`ZKCG rejected proof: ${text}`);
-  }
+//   const text = await res.text();
+//   console.log("ZKCG /submit-proof response:", text);
 
-  const json = JSON.parse(text);
-  if (json.status !== "accepted") {
-    throw new Error("ZK proof not accepted");
-  }
-}
+//   if (!res.ok) {
+//     throw new Error(`ZKCG rejected proof: ${text}`);
+//   }
+
+//   const json = JSON.parse(text);
+//   if (json.status !== "accepted") {
+//     throw new Error("ZK proof not accepted");
+//   }
+// }
 
 
 
@@ -84,15 +88,30 @@ async function submitProofToZKCG(
   /* --------------------------------------------- */
   /* ZK VERIFICATION GATE                          */
   /* --------------------------------------------- */
-console.log("🔐 Generating zkVM proof via ZKCG...");
-const proofBundle = await proveWithZKCG();
+console.log("🔐 Generating zk proof via ZKCG...");
+const SCORE = 900;
+const THRESHOLD = 1000;
+console.log("proof parameters", SCORE, THRESHOLD);
+const proofBundle = await proveWithZKCG(SCORE, THRESHOLD);
 
-console.log("🔐 Submitting proof to ZKCG verifier...");
-await submitProofToZKCG(
-  proofBundle.proof,
-  proofBundle.public_inputs.threshold,
-  proofBundle.commitment
+console.log("🔐 Verifying proof...");
+const verifyRes = await fetch(
+  "https://zkcg-production.up.railway.app/demo/verify",
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      proof: proofBundle.proof,
+      threshold: 750,
+    }),
+  }
 );
+
+const verifyJson = await verifyRes.json();
+
+if (!verifyJson.verified) {
+  throw new Error("ZK verification failed");
+}
 
 console.log("✅ ZK verification passed");
 
